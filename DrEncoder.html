@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Dr. Encoder</title>
+  <script type="text/javascript" src="ajax.js"></script>
+  <script type="text/javascript" src="packrat.js"></script>
+  <script type="text/javascript" src="jsaes.js"></script>
+  <script type="text/javascript" src="sha1.js"></script>
+  <script type="text/javascript" src="simpleCrypt.js"></script>
+  <script type="text/javascript">
+function ge(id) {
+    return document.getElementById(id);
+}
+function Encrypt() {
+    var clearText = ge('clearText').value;
+    if (ge('chkEncode').checked) {
+        var words = clearText.split(' ');
+        var dict = ge('dict').value;
+        var ct = '';
+        while (words.length) {
+            var word = words.shift();
+            var lu = dictLookup(word, dict);
+            if (lu.length == 0) {
+                ct = 'Lookup Failed.  Encoding not possible with this dictionary and message. ';
+                break;
+            }
+            ct += lu + ' ';
+        }
+        clearText = ct.substr(0, ct.length - 1);  // strip off last space
+    }
+    if (ge('chkEncrypt').checked) {
+        clearText = simpleCrypt.Encrypt(clearText, ge("pwd").value);
+    }
+    ge("cypherText").value = clearText;
+    format();
+}
+function dictLookup(word, dict) {
+    var i = dict.indexOf(word);
+    if (i == -1) {
+        if (word.length > 1) {
+            var iNonLetter = word.search(/![a-z][A-Z]/);
+            if (iNonLetter == -1) {
+                iNonLetter = word.length - 1; // just fake taking off the last character
+            }
+            var a = word.substr(0, iNonLetter);
+            var b = word.substr(iNonLetter, 1);
+            var c = word.substr(iNonLetter + 1, word.length);
+            if (a.length == 0) {
+                b = dictLookup(b, dict);
+                if (b.length == 0) {
+                    return '';
+                }
+                c = dictLookup(c, dict);
+                if (c.length == 0) {
+                    return '';
+                } 
+                return b + '-' + c;
+            } else if (c.length == 0) {
+                a = dictLookup(a, dict);
+                if (a.length == 0) {
+                    return '';
+                }
+                b = dictLookup(b, dict);
+                if (b.length == 0) {
+                    return '';
+                }
+                return a + '-' + b;
+            } else {
+                a = dictLookup(a, dict);
+                if (b.length == 0) {
+                    return '';
+                }
+                b = dictLookup(b, dict);
+                if (b.length == 0) {
+                    return '';
+                }
+                c = dictLookup(c, dict);
+                if (c.length == 0) {
+                    return '';
+                }
+                return a + '-' + b + '-' + c;
+            }
+        } else {    // word is 1 character in length
+            alert('Cannot locate the character ' + word + '=(' + word.charCodeAt(0) + ') in the dictionary.');
+            return '';
+        }
+    } else { // lookup found in dictionary
+        return i + '.' + word.length;
+    }
+}
+function Decrypt() {
+    var ct = ge("cypherText").value;
+    if (ge('chkEncrypt').checked) {
+        ct = simpleCrypt.Decrypt(ct, ge("pwd").value);
+    }
+    if (ge('chkEncode').checked) {
+        var dict = ge('dict').value;
+        var aCoords = ct.split(' ');
+        var clearText = '';
+        while (aCoords.length) {
+            var coord = aCoords.shift();
+            var aParts = coord.split('-');
+            while (aParts.length) {
+                var part = aParts.shift();
+                var aPair = part.split('.');
+                if (aPair.length != 2) {
+                    alert('Coded text is not correctly formatted. [' + part + ']');
+                    return;
+                }
+                clearText += dict.substr(Number(aPair[0]), Number(aPair[1]));
+            }
+            // clearText +=  '(' + coord + ')'; // Used for debuging
+            clearText += ' ';
+        }
+        if (clearText.length == 0) {
+            clearText = ' ';
+        }
+        ct = clearText.substr(0, clearText.length - 1);
+    }
+    ge("clearText").value = ct;
+}
+function getFormatType() {
+    var radios = document.getElementsByName('fmtType');
+    var ftype = '';
+    for (var i = 0; i < radios.length; i++) {
+        if (radios[i].checked) {
+            ftype = radios[i].value;
+            break;
+        }
+    }
+    return ftype;
+}
+function setFormatType(ftype) {
+    var id = '';
+    switch (ftype) {
+    case 'email':
+        id = 'chkEmail';
+        break;
+    case 'php':
+        id = 'chkPhp';
+        break;
+    case 'javascript':
+        id = 'chkJavascript';
+        break;
+    }
+    document.getElementById(id).checked = true;
+}
+function getFormatWidth() {
+    var width = ge('fmtWidth').value;
+    if (parseInt(width) != Number(width)) {
+        width = 110;
+    } else if (width < 40) {
+        width = 40;
+    } else if (width > 200) {
+        widt = 200;
+    } else if (width % 2 == 1) {
+        width++;
+    }
+    ge('fmtWidth').value = width;
+    width = Number(width);
+    return width;
+}
+function format() {
+    var head;
+    var ct = ge("cypherText").value;
+    var ftype = getFormatType();
+    var width = getFormatWidth();
+    var fct = '';
+    switch (ftype) {
+    case 'javascript':
+        fct = 'oData =\n';
+        ct = '"' + ct + '"';
+        break;
+    case 'php':
+        fct = '$oData =\n';
+        ct = '"' + ct + '"';
+        break;
+    case 'email':
+        head = 'Dr. Encoder Encrypted Data';
+        while (head.length < width) {
+            head = '=' + head + '=';
+        }
+        if (head.length > width) {
+            head = head.substr(0, head.length - 1);
+        }
+        fct += head + '\n';
+        break;
+    }
+    for (var i = 0; i < ct.length; i += width) {
+        if (ct.length - i < width) {
+            fct += ct.substr(i, ct.length - i);
+            if (ftype == 'email') {
+                fct += '\n';
+            }
+        } else {
+            fct += ct.substr(i, width);
+            if (ftype == 'javascript' || ftype == 'php') {
+                fct += '\\';
+            }
+            fct += '\n';
+        }
+    }
+    if (ftype == 'email') {
+        fct += head;
+    }
+    ge("fmtText").value = fct;
+}
+function unformat() {
+    var ft = ge("fmtText").value;
+    var ftype = getFormatType();
+    var iQuote = ft.indexOf('"');
+    if (iQuote == -1) {
+        ftype = "email";    // php and javascript formats would have quotes so it must be email
+        setFormatType(ftype);
+    } else if (ftype == 'email') {
+        ftype = 'php';  // if it does have quotes then it can't be email format
+        setFormatType(ftype);
+    }
+    var ct;
+    switch (ftype) {
+    case 'javascript':
+    case 'php':
+        var sCode = ft.substr(iQuote + 1);
+        sCode = sCode.substr(0, sCode.indexOf('"'));
+        ct = sCode.replace (/[\\\r\n]/g, '');
+        break;
+    case 'email':
+        var aLines = ft.replace(/\r/g, '').split('\n');
+        while (aLines[0].charAt(0) == '=') {
+            aLines.splice(0, 1);
+        }
+        while (aLines[aLines.length - 1].charAt(0) == '=') {
+            aLines.pop();
+        }
+        ct = aLines.join('');
+        break;
+    }
+    ge('cypherText').value = ct;
+}
+function PageLoad() {
+    ge("clearText").value = "Welcome to Dr. Encoder!\n\
+\n\
+This is a simple dictionary lookup encoding and encryption tool for anyone to use. \
+It runs strictly in Javascript so it runs on your local machine. \
+The dictionary is a string you use to encode the message and is optionally used by checking the 'encode' checkbox. \
+The passphrase is a key you use to encrypt the message and is optionally used by checking the 'encrypt' checkbox. \
+Doing both encryption and encoding should be extremely secure as long as the pass phrase and dictionary information are secure.";
+    ge("pwd").value = "Your password goes here.";
+    ge("dict").value = "This is where you would paste dictionary text into for encoding/decoding.  Note that this text must at least contain every character in the clear text message and ideally should contain many words found in the clear text so the output is more compressed.\nHere are some extra characters needed to encode the sample clear text: WDE!kIJb'";
+    ge("cypherText").value = "Raw encrypted text goes here.";
+    format();
+}
+  </script>
+  <style type="text/css">
+    body { font-family:Arial; }
+    .marlett { font-family:marlett; }
+    .red { background-color:pink; }
+    .green { background-color:lightgreen; }
+    .blue { background-color:lightblue; }
+    .wheat { background-color:wheat; }
+    .white { background-color:white; }
+    .purple { background-color:purple; }
+    div { vertical-align: middle; text-align:center; padding:20px; overflow:hidden; }
+    div#debug { text-align:left; border:solid black 1px; }
+    textarea { text-align:left; font-family:Courier New; }
+    textarea#formattedCypherText { text-align:left; }
+    h1 { text-align: center; }
+    h3 { margin:0px; padding:0px; }
+  </style>
+</head>
+<body onload="PageLoad();" class="wheat" >
+  <table border="0" align="center" width="100%">
+    <tr>
+      <td align="left">
+        <a href="DrEncoderHelpVideo.mp4">Help Video</a>
+      </td>
+      <td align="center">
+        <h1>Dr. Encoder</h1>
+      </td>
+      <td align="right">
+        <a href="DrEncoder.zip">Download</a>
+      </td>
+    </tr>
+  </table>
+  <div width="100%" class="green">
+    <h3>Clear Text</h3>
+    <textarea class="center white" cols="120" rows="7" id="clearText" value=""></textarea>
+  </div>
+  <div width="100%" class="wheat">
+    <button onclick="Encrypt();">v&nbsp;Encode / Encrypt&nbsp;v</button>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+    <input type="checkbox" id="chkEncrypt" checked="true">Use Encryption</input>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+    <input type="checkbox" id="chkEncode" checked="true">Use Encoding</input>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+    <button onclick="Decrypt();">^&nbsp;Decrypt / Decode&nbsp;^</button><br>
+    <br>
+    Password:<input id="pwd" type="text" size="120" id="pwd" value="" title="Enter a pass phrase use for encrypting/decrypting the message.">
+  </div>
+  <div width="100%" class="purple">
+    <h3>Code Book / Dictionary</h3>
+    <textarea class="center white" cols="120" rows="5" id="dict" value=""></textarea>
+  </div>
+  <div width="100%" class="red">
+    <h3>Unformatted Cypher Text</h3>
+    <textarea class="center white" cols="120" rows="5" id="cypherText" value=""></textarea>
+  </div>
+  <div width="100%" class="blue">
+    <button onclick="format();" title="click here to convert the raw encrypted text above into a form more appropriate for the application selected by the radio buttons below.">v&nbsp;Format&nbsp;v</button>
+    Width:<input type="text" size="3" id="fmtWidth" value="120"/>&nbsp;
+    <input type="radio" id="chkEmail"      name="fmtType" value="email" checked="true"><label for="chkEmail">email</label>&nbsp;
+    <input type="radio" id="chkPhp"        name="fmtType" value="php"><label for="chkPhp">php</label>&nbsp;
+    <input type="radio" id="chkJavascript" name="fmtType" value="javascript"><label for="chkJavascript">javascript</label>&nbsp;
+    <button onclick="unformat();" title="click here to convert the formatted text below into the raw encrypted form above.">^&nbsp;Unformat&nbsp;^</button>
+    <h3>Formatted Cyphter Text</h3>
+    <textarea class="white" cols="120" rows="5" id="fmtText" value=""></textarea>
+  </div>
+  <!--<div id="debug"></div>-->
+</body>
+</html>
